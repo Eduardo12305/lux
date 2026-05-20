@@ -1,0 +1,71 @@
+# ── Ambiente Python ───────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# ── Configuração local (segredos, paths específicos da máquina) ───────────────
+.env
+# .env.example NÃO é ignorado — serve de template público
+
+# ── Dados do usuário (gerados em runtime, fora do projeto) ───────────────────
+# ~/.lux/ fica fora do repo — apenas documentado aqui para clareza
+# sessions.db, MEMORY.md, SOUL.md, USER.md, skills/ criadas autonomamente
+
+# ── Modelos GGUF (binários grandes, nunca devem ir para o repo) ───────────────
+*.gguf
+*.bin
+models/
+lux/models/
+
+# ── Logs e PIDs de runtime ────────────────────────────────────────────────────
+*.log
+*.pid
+*.lock
+.lux/
+
+# ── Banco de dados local ──────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Testes e cobertura ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ── Checkpoints do agente ────────────────────────────────────────────────────
+checkpoints/
+
+# ── IDEs e editores ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── Docker (volumes são externos, não commitados) ─────────────────────────────
+docker-compose.override.yml
+
+# ── Arquivos de build do llama.cpp (ficam em ~/services/) ────────────────────
+# (não estão no projeto, mas por segurança)
+*.so
+*.a
+*.o
+
+# ── Temporários ──────────────────────────────────────────────────────────────
+*.tmp
+*.bak
+.cache/
