@@ -507,6 +507,12 @@ class UserProfile:
             "memory_tools",
             "skills",
             "system",
+            "terminal",
+            "email",
+            "git",
+            "desktop",
+            "subagent",
+            "orchestrator",
         ]
     )
     active_projects: list[str] = field(default_factory=list)

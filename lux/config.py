@@ -76,6 +76,28 @@ class LuxConfig(BaseSettings):
         description="URL do llama-server para o modelo auxiliar",
     )
 
+    # ── Omni (MiniCPM-o 4.5 unificado) ────────────────────────
+    omni_model_path: str = Field(
+        default="~/.lux/models/minicpm-o-4_5-gguf/MiniCPM-o-4_5-Q4_K_M.gguf",
+        description="Caminho para MiniCPM-o 4.5 GGUF",
+    )
+    omni_binary_path: str = Field(
+        default="llama-omni-cli",
+        description="Caminho para binário llama-omni-cli",
+    )
+    omni_ref_audio_path: str = Field(
+        default="",
+        description="Áudio de referência para voice cloning (opcional)",
+    )
+    omni_gfx_override: str = Field(
+        default="12.0.1",
+        description="HSA_OVERRIDE_GFX_VERSION para gfx1201",
+    )
+    omni_vram_layers: int = Field(
+        default=-1,
+        description="-1 = offload todas camadas para GPU",
+    )
+
     # ── Serviços ──────────────────────────────────────────────
     qdrant_url: str = Field(
         default="http://localhost:6333",
@@ -149,9 +171,26 @@ class LuxConfig(BaseSettings):
         default="push_to_talk",
         description="Modo de escuta: off | wake_word | push_to_talk | always_on",
     )
+    # ── Wake Word ──────────────────────────────────────────────
     wake_word: str = Field(
-        default="lux",
-        description="Wake word para ativação por voz",
+        default="arkana",
+        description="Palavra de ativação (wake word). 'arkana' é sempre mantida como reserva.",
+    )
+    wakeword_model_dir: str = Field(
+        default="~/.lux/models/wakeword",
+        description="Diretório com modelos .onnx da wake word",
+    )
+    wakeword_threshold: float = Field(
+        default=0.5,
+        description="Threshold de deteccao (0.0-1.0). Mais alto = menos falsos positivos",
+    )
+    wakeword_cooldown_s: float = Field(
+        default=2.0,
+        description="Segundos minimos entre deteccoes consecutivas",
+    )
+    wakeword_min_rms: float = Field(
+        default=0.002,
+        description="RMS minimo de energia para processar a wake word",
     )
     stt_language: str = Field(
         default="pt",
@@ -223,6 +262,56 @@ class LuxConfig(BaseSettings):
     searxng_url: str = Field(
         default="http://localhost:8888",
         description="URL do SearXNG local",
+    )
+
+    # ── Diretórios Monitorados (Módulo 1 - File Watcher) ───────
+    watch_dirs: str = Field(
+        default="",
+        description="Diretórios monitorados (separados por vírgula)",
+    )
+    reindex_interval: int = Field(
+        default=30,
+        description="Intervalo de reindexação automática em minutos",
+    )
+    accepted_extensions: str = Field(
+        default=".md,.txt,.py,.json,.yaml,.yml,.toml,.cfg,.ini,.env,.sh,.js,.ts,.html,.css,.rs,.go,.java,.c,.cpp,.h",
+        description="Extensões de arquivo aceitas para indexação",
+    )
+    dir_max_depth: int = Field(
+        default=3,
+        description="Profundidade máxima de leitura de subpastas",
+    )
+    file_watcher_enabled: bool = Field(
+        default=True,
+        description="Habilita monitoramento de diretórios em tempo real",
+    )
+
+    # ── E-mail Inteligente (Módulo 2 - Email Classifier) ──────
+    email_provider: str = Field(
+        default="imap",
+        description="Provider de e-mail: gmail | outlook | imap",
+    )
+    email_fetch_limit: int = Field(
+        default=50,
+        description="Quantidade de e-mails recentes para carregar",
+    )
+    email_interests: str = Field(
+        default="",
+        description="Categorias de interesse: nome1:kw1,kw2; nome2:kw3,kw4",
+    )
+    email_classifier_enabled: bool = Field(
+        default=False,
+        description="Habilita classificador de e-mails",
+    )
+
+    # ── Workflow Engine (Módulo 3) ────────────────────────────
+    workflows_enabled: bool = Field(
+        default=True,
+        description="Habilita motor de workflows automáticos",
+    )
+    workflow_dir: Path = Field(
+        default=LUX_HOME / "workflows",
+        description="Diretório com arquivos .yaml de workflow",
     )
 
     # ── Lux Home ──────────────────────────────────────────────

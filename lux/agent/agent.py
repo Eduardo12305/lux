@@ -41,7 +41,7 @@ from lux.agent.trajectory import TrajectorySaver
 from lux.compression.compressor import ContextCompressor
 from lux.config import get_config
 from lux.memory.manager import MemoryManager
-from lux.memory.nudge import MemoryNudgeSystem
+from lux.memory.nudge import MemoryNudgeSystem, SkillNudgeSystem
 from lux.memory.session_db import SessionDB
 from lux.models.llama_client import (
     AgentInterruptedException,
@@ -103,6 +103,7 @@ class AIAgent:
         self._context_loader = ContextFileLoader()
         self._soul_loader = SoulLoader()
         self._nudge = MemoryNudgeSystem()
+        self._skill_nudge = SkillNudgeSystem()
         self._compressor = ContextCompressor(
             memory_manager=self._memory_mgr,
             session_db=self._memory_mgr.session_db,
@@ -119,6 +120,7 @@ class AIAgent:
 
         self.state: Optional[AgentState] = None
         self._executor = ThreadPoolExecutor(max_workers=4)
+        self._injected_skills: set[str] = set()
 
     # ── Public Interface ──────────────────────────────────────────────────
 
@@ -138,6 +140,8 @@ class AIAgent:
         if max_iterations:
             self._max_iterations = max_iterations
             self._budget = IterationBudget(max_iterations=max_iterations)
+
+        self._injected_skills.clear()
 
         state = await self._init_state(
             user_message=user_message,
@@ -160,6 +164,90 @@ class AIAgent:
         finally:
             await self._cleanup(state)
 
+    async def run_conversation_stream(
+        self,
+        user_message: str,
+        system_message: Optional[str] = None,
+        conversation_history: Optional[list] = None,
+        task_id: Optional[str] = None,
+        max_iterations: Optional[int] = None,
+    ):
+        """Versao streaming: yield cada token conforme o LLM gera."""
+        if max_iterations:
+            self._max_iterations = max_iterations
+            self._budget = IterationBudget(max_iterations=max_iterations)
+
+        self._injected_skills.clear()
+
+        state = await self._init_state(
+            user_message=user_message,
+            system_message=system_message,
+            conversation_history=conversation_history,
+            task_id=task_id,
+        )
+        self.state = state
+
+        try:
+            while not self._budget.is_exhausted:
+                if state.interrupt_event.is_set():
+                    yield "[INTERROMPIDO]"
+                    return
+
+                if self._needs_preflight_compression(state):
+                    await self._compressor.compress(state, self._compression_threshold)
+
+                api_messages = state.to_openai_messages()
+
+                skill_context = self._get_skill_context(state, api_messages)
+                if skill_context:
+                    api_messages.insert(
+                        1, {"role": "system", "content": skill_context}
+                    )
+
+                tools = self._tool_registry.get_active_schemas(
+                    state.user_profile, state.user_profile.enabled_toolsets,
+                )
+
+                task_config = self._router.get_config(Task.CONVERSATION)
+
+                full_response = []
+                try:
+                    async for token in self._model_mgr.llama.chat_completion_stream(
+                        messages=api_messages,
+                        model=task_config.model,
+                        temperature=task_config.temperature,
+                        max_tokens=task_config.max_tokens,
+                        tools=tools if tools else None,
+                        session_id=state.session_id,
+                    ):
+                        full_response.append(token)
+                        yield token
+                except Exception as e:
+                    logger.exception("Erro no streaming")
+                    yield f"\n[ERRO: {e}]"
+                    return
+
+                self._budget.consume()
+                state.iteration += 1
+
+                llm_response = LLMResponse(
+                    content="".join(full_response),
+                    model=task_config.model,
+                    finish_reason="stop",
+                    tokens_prompt=0,
+                    tokens_completion=len(full_response),
+                )
+
+                if llm_response.tool_calls:
+                    await self._execute_tool_calls(llm_response.tool_calls, state)
+                    continue
+
+                await self._finalize(state, llm_response)
+                return
+
+        finally:
+            await self._cleanup(state)
+
     # ── 55.1 _init_state ─────────────────────────────────────────────────
 
     async def _init_state(
@@ -175,12 +263,14 @@ class AIAgent:
             display_name=self.user_id,
             enabled_toolsets=self._enabled_toolsets
             or [
+                "terminal",
                 "web",
                 "tasks",
                 "calendar",
                 "memory_tools",
                 "skills",
                 "system",
+                "git",
             ],
         )
 
@@ -237,6 +327,40 @@ class AIAgent:
 
     # ── 55.9 _agent_loop ─────────────────────────────────────────────────
 
+    def _get_skill_context(
+        self, state: AgentState, api_messages: list[dict]
+    ) -> str | None:
+        """Escaneia a conversa por referências a skills e injeta L1."""
+        if not self._skill_mgr:
+            return None
+
+        available = self._skill_mgr.get_skills_list_l0(
+            state.user_profile, state.channel
+        )
+        skill_names = {s.name for s in available}
+
+        combined_text = " ".join(
+            m.get("content", "") for m in api_messages
+            if isinstance(m.get("content"), str)
+        ).lower()
+
+        for name in skill_names:
+            if name in self._injected_skills:
+                continue
+            if name.replace("-", " ") in combined_text or name in combined_text:
+                try:
+                    content = self._skill_mgr.get_skill_content_l1(name)
+                    if content:
+                        self._injected_skills.add(name)
+                        return (
+                            f"[SKILL CONTEXT — Siga estas instruções]\n\n"
+                            f"{content}\n\n"
+                            f"Use esta skill para a tarefa atual quando aplicável."
+                        )
+                except FileNotFoundError:
+                    continue
+        return None
+
     async def _agent_loop(self, state: AgentState) -> ConversationResult:
         while not self._budget.is_exhausted:
             if state.interrupt_event.is_set():
@@ -258,6 +382,16 @@ class AIAgent:
             memory_nudge = self._nudge.maybe_inject_nudge(state)
             if memory_nudge:
                 api_messages.append({"role": "user", "content": memory_nudge})
+
+            skill_nudge = self._skill_nudge.maybe_inject_nudge(state)
+            if skill_nudge:
+                api_messages.append({"role": "user", "content": skill_nudge})
+
+            skill_context = self._get_skill_context(state, api_messages)
+            if skill_context:
+                api_messages.insert(
+                    1, {"role": "system", "content": skill_context}
+                )
 
             task_config = self._router.get_config(
                 Task.CONVERSATION_DEEP
@@ -292,6 +426,7 @@ class AIAgent:
             self._trajectory.record_step(state, llm_response)
 
             if llm_response.tool_calls:
+                self._skill_nudge.track_tool_call()
                 await self._execute_tool_calls(llm_response.tool_calls, state)
                 continue
 
@@ -542,6 +677,40 @@ class AIAgent:
             state.session_id,
             tokens_used=llm_response.tokens_prompt + llm_response.tokens_completion,
         )
+
+        asyncio.create_task(self._reflect_async(state, llm_response))
+
+    async def _reflect_async(self, state: AgentState, llm_response: LLMResponse):
+        try:
+            from lux.reflection.post_task import PostTaskReflector
+            tools_used = list({
+                tc.function_name
+                for msg in state.conversation_history
+                if msg.tool_calls
+                for tc in msg.tool_calls
+            })
+            errors = [
+                r.error_message for r in state.tool_results if not r.success and r.error_message
+            ]
+
+            reflector = PostTaskReflector(
+                llama=self._model_mgr.llama,
+                memory_mgr=self._memory_mgr,
+                session_db=self._memory_mgr.session_db,
+            )
+            await reflector.reflect_async(
+                task_id=state.task_id,
+                session_id=state.session_id,
+                user_id=state.user_id,
+                task_description=llm_response.content[:200],
+                iterations_used=state.iteration,
+                max_iterations=state.max_iterations,
+                tools_used=tools_used,
+                errors=errors,
+                outcome="SUCCESS",
+            )
+        except Exception:
+            logger.debug("Reflexao em background falhou", exc_info=True)
 
     # ── 55.10-55.11 Result Builders ──────────────────────────────────────
 

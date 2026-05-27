@@ -14,7 +14,9 @@ from lux.agent.state import (
     ApprovalPattern,
     ApprovalRequest,
     ApprovalResult,
+    UserRole,
 )
+from lux.auth.admin_gate import AdminPasswordGate
 from lux.tools.toolsets import TOOLSETS
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,15 @@ class ApprovalSystem:
     Detecta comandos perigosos e gerencia aprovacao do usuario.
     ALWAYS_DANGEROUS: bloqueados sempre.
     WARN_PATTERNS: pedem aprovacao mas nao bloqueiam.
+    AdminPasswordGate: protecao extra para comandos perigosos (admin).
+    """
+
+class ApprovalSystem:
+    """
+    Detecta comandos perigosos e gerencia aprovacao do usuario.
+    ALWAYS_DANGEROUS: bloqueados sempre.
+    WARN_PATTERNS: pedem aprovacao mas nao bloqueiam.
+    AdminPasswordGate: protecao extra para comandos perigosos (admin).
     """
 
     ALWAYS_DANGEROUS = [
@@ -50,6 +61,9 @@ class ApprovalSystem:
         r"pkill\s+-9",
         r"kill\s+-9",
     ]
+
+    def __init__(self, admin_gate: AdminPasswordGate | None = None):
+        self._admin_gate = admin_gate or AdminPasswordGate()
 
     def requires_approval(
         self,
@@ -79,6 +93,16 @@ class ApprovalSystem:
                 return True
 
         return False
+
+    def check_dangerous_for_role(
+        self, command: str, role: UserRole
+    ) -> str:
+        """Retorna BLOCKED, ADMIN_PASSWORD_REQUIRED, ou APPROVAL_REQUIRED."""
+        if self._admin_gate.is_dangerous(command):
+            if role != UserRole.ADMIN:
+                return "BLOCKED"
+            return "ADMIN_PASSWORD_REQUIRED"
+        return "APPROVAL_REQUIRED"
 
     def request_approval(
         self,

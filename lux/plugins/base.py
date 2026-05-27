@@ -1,25 +1,74 @@
-from abc import ABC, abstractmethod
+# lux/plugins/base.py
+# Módulo: Plugins
+# Dependências: agent/state.py
+# Status: IMPLEMENTADO
+# Notas: Plugin ABC com todos os hooks. Plugins herdam desta classe.
+
+from __future__ import annotations
+
+from abc import ABC
+from typing import Optional
+
+from lux.agent.state import AgentState, ToolResult
 
 
-class Plugin(ABC):
-    """Base class for Lux plugins."""
+class LuxPlugin(ABC):
+    """Base para plugins do Lux. Sobrescreva os hooks que precisar."""
 
-    name: str = ""
-    version: str = "0.1.0"
+    name: str = "unnamed"
+    version: str = "1.0.0"
+    description: str = ""
 
-    @abstractmethod
-    async def on_load(self) -> None:
-        ...
+    # ── Tool Hooks ──────────────────────────────────────────────────────
 
-    @abstractmethod
-    async def on_unload(self) -> None:
-        ...
-
-    async def on_message(self, message: dict) -> dict | None:
+    def pre_tool_call(
+        self, tool_name: str, args: dict, state: AgentState
+    ) -> Optional[ToolResult]:
+        """
+        Executado ANTES de cada tool call.
+        Se retornar ToolResult, a tool real é CANCELADA e este resultado é usado.
+        Se retornar None, a tool executa normalmente.
+        """
         return None
 
-    async def on_startup(self) -> None:
+    def post_tool_call(
+        self, tool_name: str, args: dict, result: ToolResult, state: AgentState
+    ) -> None:
+        """Executado APÓS cada tool call (bem-sucedida ou não)."""
         pass
 
-    async def on_shutdown(self) -> None:
+    # ── LLM Hooks ───────────────────────────────────────────────────────
+
+    def pre_llm_call(
+        self, messages: list[dict], state: AgentState
+    ) -> Optional[list[dict]]:
+        """
+        Executado ANTES de cada chamada ao LLM.
+        Pode modificar ou substituir as mensagens.
+        Se retornar None, usa as mensagens originais.
+        """
+        return None
+
+    def post_llm_call(
+        self, response: dict, state: AgentState
+    ) -> None:
+        """Executado APÓS cada resposta do LLM."""
+        pass
+
+    # ── Session Hooks ───────────────────────────────────────────────────
+
+    def on_session_start(self, state: AgentState) -> None:
+        """Executado ao iniciar uma sessão."""
+        pass
+
+    def on_session_end(self, state: AgentState) -> None:
+        """Executado ao encerrar uma sessão."""
+        pass
+
+    # ── Memory Hooks ────────────────────────────────────────────────────
+
+    def on_memory_write(
+        self, action: str, target: str, content: str, user_id: str
+    ) -> None:
+        """Executado ao persistir uma memória."""
         pass

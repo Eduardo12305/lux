@@ -7,7 +7,7 @@ name = "lux"
 version = "1.0.0"
 description = "Assistente Pessoal Local com IA — 100% local, MIT"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 license = {text = "MIT"}
 authors = [{name = "Lux Contributors"}]
 keywords = ["ai", "assistant", "local", "llm", "agent"]
@@ -44,7 +44,12 @@ dev = [
 ]
 voice = [
     "pyaudio>=0.2",
-    "silero-vad>=5.0",
+    "webrtcvad>=2.0",
+    "openwakeword>=0.6",
+    "onnxruntime>=1.17",
+    "librosa>=0.10",
+    "numpy",
+    "sounddevice",
 ]
 gateway = [
     "python-telegram-bot>=21.0",
@@ -76,3 +81,8 @@ select = ["E", "F", "I", "N", "W", "UP"]
 strict = false
 python_version = "3.11"
 ignore_missing_imports = true
+
+[tool.uv]
+override-dependencies = [
+    "tflite-runtime ; python_version < '3.12'"
+]

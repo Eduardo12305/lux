@@ -1,0 +1,59 @@
+#!/bin/bash
+# /usr/local/bin/lux  (ou ~/.local/bin/lux)
+# Abre o Lux de qualquer diretório, passando o CWD como contexto de trabalho
+#
+# Uso:
+#   lux                    → abre no diretório atual
+#   lux /caminho/do/repo   → abre com contexto daquele diretório
+
+LUX_PROJECT="$HOME/Documentos/projetos/lux"
+LUX_VENV="$LUX_PROJECT/.venv"
+PID_DIR="$HOME/.lux/pids"
+SERVICES_SCRIPT="$LUX_PROJECT/scripts/start.sh"
+
+# ── Cores ─────────────────────────────────────────────────
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+# Diretório de trabalho: argumento ou CWD atual
+WORK_DIR="${1:-$(pwd)}"
+WORK_DIR="$(realpath "$WORK_DIR" 2>/dev/null || echo "$WORK_DIR")"
+
+# ── Verificar se os serviços já estão rodando ─────────────
+MAIN_RUNNING=false
+AUX_RUNNING=false
+
+if [ -f "$PID_DIR/llama_main.pid" ] && kill -0 "$(cat "$PID_DIR/llama_main.pid")" 2>/dev/null; then
+    MAIN_RUNNING=true
+fi
+if [ -f "$PID_DIR/llama_aux.pid" ] && kill -0 "$(cat "$PID_DIR/llama_aux.pid")" 2>/dev/null; then
+    AUX_RUNNING=true
+fi
+
+if $MAIN_RUNNING && $AUX_RUNNING && curl -sf http://127.0.0.1:8080/health &>/dev/null; then
+    # Serviços já rodando — conecta direto
+    echo -e "${GREEN}[✓]${NC} Serviços já ativos. Conectando ao Lux..."
+    echo -e "${CYAN}[→]${NC} Contexto: ${WORK_DIR}"
+else
+    # Precisa iniciar os serviços
+    echo -e "${YELLOW}[!]${NC} Serviços não encontrados. Iniciando..."
+    echo ""
+    # Inicia em background (sem o CLI final) usando subshell
+    # O start.sh usa `exec python -m lux.main` no final — precisamos
+    # rodar só os serviços e depois abrir o CLI manualmente
+    bash "$LUX_PROJECT/scripts/_start_services.sh" || {
+        echo "Falha ao iniciar serviços. Execute: $SERVICES_SCRIPT"
+        exit 1
+    }
+fi
+
+# ── Ativar venv e lançar o Lux com contexto do diretório ──
+source "$LUX_VENV/bin/activate"
+cd "$LUX_PROJECT"
+
+# Exporta o diretório de trabalho para o Lux usar como contexto
+export LUX_WORK_DIR="$WORK_DIR"
+
+exec python -m lux.main --workdir "$WORK_DIR"

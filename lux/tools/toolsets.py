@@ -27,7 +27,7 @@ TOOLSETS: dict[str, Toolset] = {
                "file_delete", "directory_list", "directory_create",
                "search_files", "patch_file"],
         requires_approval=True,
-        min_role=UserRole.ADMIN,
+        min_role=UserRole.USER,
     ),
     "web": Toolset(
         name="web",
@@ -95,5 +95,16 @@ TOOLSETS: dict[str, Toolset] = {
         tools=["delegate_task", "todo"],
         requires_approval=False,
         min_role=UserRole.USER,
+    ),
+    "desktop": Toolset(
+        name="desktop",
+        description="Controle de desktop: screenshots, mouse, teclado, janelas, OCR",
+        tools=[
+            "screenshot", "screen_read", "mouse_click", "mouse_move",
+            "keyboard_type", "keyboard_press", "window_list", "window_focus",
+            "clipboard_read", "clipboard_write", "find_on_screen",
+        ],
+        requires_approval=True,
+        min_role=UserRole.ADMIN,
     ),
 }

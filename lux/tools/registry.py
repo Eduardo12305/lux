@@ -8,11 +8,35 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from lux.agent.state import AgentState, ToolResult, UserProfile
+from lux.agent.state import AgentState, ToolResult, UserProfile, UserRole
 from lux.tools.base import Tool
 from lux.tools.toolsets import TOOLSETS, Toolset
 
 logger = logging.getLogger(__name__)
+
+_toolet_permissions: dict[str, list[UserRole]] = {
+    "terminal": [UserRole.ADMIN],
+    "git": [UserRole.ADMIN, UserRole.USER],
+    "email": [UserRole.ADMIN, UserRole.USER],
+    "filesystem": [UserRole.ADMIN, UserRole.USER],
+    "subagent": [UserRole.ADMIN, UserRole.USER],
+    "skills": [UserRole.ADMIN, UserRole.USER],
+    "system": [UserRole.ADMIN, UserRole.USER],
+    "tasks": [UserRole.ADMIN, UserRole.USER, UserRole.GUEST],
+    "calendar": [UserRole.ADMIN, UserRole.USER, UserRole.GUEST],
+    "memory_tools": [UserRole.ADMIN, UserRole.USER, UserRole.GUEST],
+    "web": [UserRole.ADMIN, UserRole.USER, UserRole.GUEST],
+    "user_management": [UserRole.ADMIN],
+    "desktop": [UserRole.ADMIN],
+}
+
+
+def _has_permission(tool_name: str, role: UserRole) -> bool:
+    for toolset_name, ts in TOOLSETS.items():
+        if tool_name in ts.tools:
+            allowed = _toolet_permissions.get(toolset_name, [UserRole.ADMIN, UserRole.USER, UserRole.GUEST])
+            return role in allowed
+    return True
 
 
 class ToolRegistry:
@@ -52,6 +76,11 @@ class ToolRegistry:
             return ToolResult.failure(
                 f"Ferramenta '{name}' nao encontrada. "
                 f"Disponiveis: {', '.join(self._registry.keys())}"
+            )
+        if not _has_permission(name, state.user_profile.role):
+            return ToolResult.failure(
+                f"Sua conta ({state.user_profile.role.value}) "
+                f"nao tem permissao para usar '{name}'."
             )
         try:
             return tool.execute(args, state)

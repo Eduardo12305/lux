@@ -1,0 +1,13 @@
+#!/bin/bash
+# Lux wrapper — copie para ~/bin/lux ou /usr/local/bin/lux
+# Ajuste LUX_HOME para o caminho do repositório
+LUX_HOME="$(cd "$(dirname "$0")" && pwd)"
+LUX_VENV="${LUX_HOME}/.venv"
+
+if [ -f "${LUX_VENV}/bin/python3" ]; then
+    exec "${LUX_VENV}/bin/python3" -m lux.main "$@"
+else
+    echo "Lux: venv nao encontrado em ${LUX_VENV}"
+    echo "Execute: cd ${LUX_HOME} && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
+    exit 1
+fi

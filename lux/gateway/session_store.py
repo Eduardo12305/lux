@@ -1,25 +1,28 @@
-from dataclasses import dataclass, field
-import time
+# lux/gateway/session_store.py
+# Módulo: Gateway
+# Dependências: memory/session_db.py
+# Status: IMPLEMENTADO
 
+from __future__ import annotations
 
-@dataclass
-class Session:
-    session_id: str
-    user_id: str
-    created_at: float = field(default_factory=time.time)
+import logging
+from uuid import uuid4
+
+from lux.agent.state import Channel
+from lux.memory.session_db import SessionDB
+
+logger = logging.getLogger(__name__)
 
 
 class SessionStore:
-    """In-memory session storage."""
+    """Gerencia sessoes do gateway com persistencia em SQLite."""
 
-    def __init__(self):
-        self._sessions: dict[str, Session] = {}
+    def __init__(self, session_db: SessionDB | None = None):
+        self._db = session_db or SessionDB()
 
-    def create(self, session: Session) -> None:
-        self._sessions[session.session_id] = session
-
-    def get(self, session_id: str) -> Session | None:
-        return self._sessions.get(session_id)
-
-    def delete(self, session_id: str) -> None:
-        self._sessions.pop(session_id, None)
+    async def get_or_create(
+        self, user_id: str, channel: Channel
+    ) -> str:
+        session_id = uuid4().hex
+        await self._db.create_session(session_id, user_id, channel)
+        return session_id

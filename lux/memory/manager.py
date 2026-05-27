@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -248,4 +249,92 @@ class MemoryManager:
 
     async def close(self):
         await self._session_db.close()
+
+    # ── Namespace-aware Operations (Módulo 4 - Memória Unificada) ─────────
+
+    async def get_namespace(self, namespace: str, user_id: str = "system") -> dict:
+        """Retorna todos os dados de um namespace de memória."""
+        ns_dir = self.memories_dir / user_id / "namespaces" / namespace
+        result: dict = {}
+        if not ns_dir.exists():
+            return result
+        for f in ns_dir.glob("*.json"):
+            try:
+                data = json.loads(f.read_text())
+                result[f.stem] = data
+            except (json.JSONDecodeError, OSError):
+                continue
+        return result
+
+    async def search_namespace(
+        self, query: str, user_id: str = "system", limit: int = 10
+    ) -> list[dict]:
+        """Busca textual em todos os namespaces de memória."""
+        results = []
+        base = self.memories_dir / user_id / "namespaces"
+        if not base.exists():
+            return results
+        query_lower = query.lower()
+        for ns_dir in sorted(base.iterdir()):
+            if not ns_dir.is_dir():
+                continue
+            for f in ns_dir.glob("*.json"):
+                try:
+                    content = f.read_text().lower()
+                    if query_lower in content:
+                        data = json.loads(f.read_text())
+                        results.append({
+                            "namespace": ns_dir.name,
+                            "key": f.stem,
+                            "data": data,
+                        })
+                except (json.JSONDecodeError, OSError):
+                    continue
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+        return results
+
+    async def store_namespace(
+        self, namespace: str, key: str, data: dict, user_id: str = "system"
+    ):
+        """Armazena dados em um namespace específico."""
+        ns_dir = self.memories_dir / user_id / "namespaces" / namespace
+        ns_dir.mkdir(parents=True, exist_ok=True)
+        (ns_dir / f"{key}.json").write_text(
+            json.dumps(data, ensure_ascii=False, indent=2)
+        )
+
+    async def delete_namespace_key(
+        self, namespace: str, key: str, user_id: str = "system"
+    ):
+        """Remove uma chave de um namespace."""
+        path = self.memories_dir / user_id / "namespaces" / namespace / f"{key}.json"
+        if path.exists():
+            path.unlink()
+
+    async def cross_namespace_query(
+        self, query: str, namespaces: list[str], user_id: str = "system"
+    ) -> str:
+        """Consulta cruzada entre múltiplos namespaces.
+        Ex: projetos + emails para 'tem vaga de Python?'"""
+        results_parts: list[str] = []
+        for ns in namespaces:
+            ns_data = await self.get_namespace(ns, user_id)
+            query_lower = query.lower()
+            matches = []
+            for key, data in ns_data.items():
+                data_str = json.dumps(data, ensure_ascii=False).lower()
+                if query_lower in data_str:
+                    matches.append(data)
+            if matches:
+                results_parts.append(
+                    f"### {ns} ({len(matches)} resultados)\n"
+                    + "\n".join(
+                        json.dumps(m, ensure_ascii=False, indent=2)[:500]
+                        for m in matches[:5]
+                    )
+                )
+        return "\n\n".join(results_parts) if results_parts else "Nenhum resultado."
         await self._semantic.close()
